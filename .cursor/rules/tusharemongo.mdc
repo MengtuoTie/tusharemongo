@@ -1,0 +1,231 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# TushareMongo项目说明
+
+## 项目概述
+
+[tusharemongo.py](mdc:tusharemongo.py)是一个Python工具，用于连接Tushare API和MongoDB数据库，实现A股市场数据的获取、存储和管理。该工具支持多种数据同步策略和提取模式，适用于各类股票数据分析场景。
+
+## 主要组件
+
+### 类和枚举
+
+1. `SyncStrategy` - 数据同步策略枚举：
+   - `FULL`: 完整同步，删除已有数据，重新获取全部数据
+   - `UPDATE_APPEND`: 更新追加模式，更新已有数据，添加新数据
+   - `SKIP_EXISTING`: 跳过已存在数据，只获取不存在的数据
+
+2. `RateLimiter` - API调用频率限制器，防止超过Tushare API的调用限制
+
+3. `TushareMongoManager` - 核心类，负责：
+   - 连接Tushare API和MongoDB
+   - 获取、处理和存储数据
+   - 支持多种数据提取模式
+
+## 关键功能
+
+### 数据获取方法
+
+`fetch_data`方法是核心数据获取功能，支持以下参数：
+
+- `api_params`: 基础API参数
+- `ts_codes`: 股票代码列表，如果指定则按股票代码循环提取数据
+- `start_date/end_date`: 日期范围
+- `day_step`: 日期步长，控制数据提取粒度：
+  - `day_step=1`: 按单日提取数据，使用trade_date参数
+  - `day_step>1`: 按指定天数范围分段提取数据
+  - `day_step`设很大值(如10000): 一次性提取整个日期范围的数据
+- `sync_strategy`: 同步策略，控制已有数据的处理方式
+
+### 分钟级数据获取
+
+`fetch_minute_data`方法专门用于获取分钟级别数据：
+- 支持1min/5min/15min/30min/60min频率
+- 基于频率自动计算单次API调用的最大天数
+- 根据分钟数据特点处理时间范围和增量更新
+
+### 其他重要方法
+
+- `update_by_trade_date`: 获取指定交易日的所有股票数据
+- `update_by_date_range`: 获取指定日期范围内所有交易日的数据
+- `find_last_updated_date`: 查找最新的交易日期
+- `find_last_updated_timestamp`: 查找最新的时间戳（分钟级数据）
+- `check_missing_dates`: 检查日期区间内缺失的交易日
+
+## 数据流程
+
+1. 通过Tushare API获取数据
+2. 对数据进行预处理（日期标准化、缺失值处理等）
+3. 根据同步策略处理与已有数据的关系
+4. 将数据保存到MongoDB
+5. 支持批量操作和错误重试
+
+## 最佳实践
+
+### 场景与推荐配置
+
+1. **日常增量更新**：
+   ```python
+   manager.fetch_data(
+       start_date='20230101',
+       day_step=1,  # 按日提取
+       sync_strategy=SyncStrategy.SKIP_EXISTING
+   )
+   ```
+
+2. **历史数据批量获取**：
+   ```python
+   manager.fetch_data(
+       start_date='20100101',
+       end_date='20230101',
+       day_step=10000,  # 一次性提取整个范围
+       sync_strategy=SyncStrategy.SKIP_EXISTING
+   )
+   ```
+
+3. **按股票代码逐个获取**：
+   ```python
+   manager.fetch_data(
+       ts_codes=ts_codes,  # 股票代码列表
+       start_date='20230101',
+       day_step=100,  # 每次获取100天数据
+       sync_strategy=SyncStrategy.UPDATE_APPEND
+   )
+   ```
+
+4. **获取分钟级数据**：
+   ```python
+   manager.fetch_minute_data(
+       freq='15min',              # 频率：1min/5min/15min/30min/60min
+       ts_codes=ts_codes[:5],     # 股票代码列表
+       start_datetime='2024-07-01 09:00:00',
+       end_datetime='2024-07-15 15:00:00',
+       sync_strategy=SyncStrategy.SKIP_EXISTING
+   )
+   ```
+
+## 使用注意事项
+
+- 合理控制API调用频率，避免超出Tushare限制
+- 大数据量处理时建议使用批处理模式
+- 使用适当的同步策略避免重复数据
+- 分钟级数据需要额外的权限（需单独付费，约2000元/年）
+
+## 代码编写与调试指南
+
+### 编码规范
+
+1. **文件编码声明**：
+   - 包含中文等非ASCII字符的Python文件必须在首行添加UTF-8编码声明：
+   ```python
+   # -*- coding: utf-8 -*-
+   ```
+
+2. **字符规范**：
+   - 避免使用中文全角符号（如："："），应使用英文半角符号（如":"）
+   - 错误示例：`"""示例：使用TushareMongoManager"""`
+   - 正确示例：`"""示例:使用TushareMongoManager"""`
+
+3. **类定义结构**：
+   - 不要在类定义内部实例化该类自身（会导致`NameError`）
+   - 类的实例化应在类完全定义结束后（如在`main()`函数中）进行
+   - 错误示例：在`TushareMongoManager`类内创建`TushareMongoManager`实例
+   - 正确示例：在`main()`函数中创建实例
+
+4. **注释风格**：
+   - 保持代码注释风格一致
+   - 若使用中文注释，确保文件已声明UTF-8编码
+   - 使用统一的缩进和格式
+
+### 增量开发模式
+
+1. **模块化设计**：
+   - 将不同功能实现为独立方法（如`fetch_data`和`fetch_minute_data`）
+   - 避免大型方法承载过多功能
+
+2. **代码注释与保留**：
+   - 对暂不需要但可能未来使用的代码块，使用注释保留
+   - 确保已注释的代码不会干扰程序主体逻辑
+   - 在`main`函数中可以保留多个任务示例，根据需要启用
+
+### 常见错误处理
+
+1. **编码错误**：
+   - `SyntaxError: invalid character '：' (U+FF1A)`：检查并替换全角符号
+   - 典型错误示例（实际运行日志）：
+     ```
+     File "d:\Program_Files\CurorProjects\tushareMongoProgject\tusharemongo.py", line 1721
+         """示例：使用TushareMongoManager"""
+              ^
+     SyntaxError: invalid character '：' (U+FF1A)
+     ```
+   - 这种错误非常顽固，可能需要多次检查才能找到所有全角符号
+   - 解决方案：将全角冒号"："替换为半角冒号":"
+   - 文件编码问题：确保添加UTF-8声明并使用正确编码保存文件
+
+2. **类定义错误**：
+   - `NameError: name 'TushareMongoManager' is not defined`：类定义内尝试创建自身实例
+   - 错误示例：在类定义内部直接创建实例
+     ```python
+     class TushareMongoManager:
+         def __init__(self, ...):
+             # 初始化代码
+             
+         # 其他方法
+         
+         # 错误：在类定义内创建自身实例
+         pro_bar_manager = TushareMongoManager(
+             ts_token=tushare_token,
+             api_name='pro_bar',
+             # 其他参数
+         )
+     ```
+   - 解决方案：将实例化代码移出类定义，放入`main()`函数或其他函数中
+
+3. **数据处理错误**：
+   - `TypeError: object of type 'NoneType' has no len()`：检查返回值是否为None
+   - 常见原因：函数返回None但后续代码试图对返回值应用len()
+   - 解决方案：添加适当的空值检查和默认返回值
+     ```python
+     # 错误范例
+     date_ranges = self._build_date_ranges(start_date, end_date, day_step)
+     for i in range(len(date_ranges)):  # 如果date_ranges是None会报错
+         # 处理逻辑
+         
+     # 正确范例
+     date_ranges = self._build_date_ranges(start_date, end_date, day_step) or []
+     for i in range(len(date_ranges)):  # 即使原函数返回None也不会报错
+         # 处理逻辑
+     ```
+
+### 调试技巧
+
+1. **全角字符识别与替换**：
+   - 使用支持Unicode字符显示的编辑器（如VS Code）
+   - 通过查找替换功能，搜索全角符号并替换为半角符号
+   - 常见全角符号及其半角对应：
+     - 全角冒号"："→ 半角冒号":"
+     - 全角引号"""" → 半角引号"\""
+     - 全角括号"（）" → 半角括号"()"
+     - 全角逗号"，" → 半角逗号","
+
+2. **类实例化问题排查**：
+   - 检查类定义内是否有直接创建该类实例的代码
+   - 使用搜索功能查找类名加等号模式（如`TushareMongoManager =`）
+   - 将所有实例化代码移至适当位置（通常是main函数）
+
+3. **编码问题预防**：
+   - 使用中文文本编辑器时复制代码到IDE前检查
+   - 使用IDE的"显示空白字符"功能帮助识别异常字符
+   - 运行前使用`python -m py_compile tusharemongo.py`预检查语法错误
+   - 顽固的编码错误可能需要多次检查才能解决（如日志显示多次相同错误）
+   - 如遇到难以解决的编码问题，尝试将问题行完全删除并重新输入
+
+4. **文本替换方法**：
+   - Windows PowerShell中使用`(Get-Content file.py) -replace '：',':'`
+   - Linux/Mac终端中使用`sed -i 's/：/:/g' file.py`
+   - 在IDE中使用正则表达式搜索全角字符
+
