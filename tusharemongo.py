@@ -1698,6 +1698,200 @@ class TushareMongoManager:
         except Exception as e:
             logger.error(f"查找最新时间戳失败 ({time_field}): {e}")
             return None
+def extract_data_simple(collection=None, code_list=None, start_date=None, end_date=None, 
+                     columns=None, date_field=None, save_to_csv=False, csv_filename=None):
+    """
+    简化版的数据提取函数，支持按列筛选:
+    - 不加参数: 提取全部数据
+    - 只传入code_list: 提取指定股票代码的所有数据
+    - 只传入start_date: 提取从开始日期到最新的所有数据
+    - 传入columns: 仅提取指定的列，减少内存占用
+    
+    参数:
+        collection: MongoDB集合对象，必须提供
+        code_list: 股票代码列表，例如["000001.SZ", "600000.SH"]
+        start_date: 开始日期，格式为'YYYYMMDD'或'YYYY-MM-DD'
+        end_date: 结束日期，格式为'YYYYMMDD'或'YYYY-MM-DD'
+        columns: 要提取的列名列表，例如["ts_code", "trade_date", "close", "open"]
+        date_field: 日期字段名称，默认会自动检测('trade_date', 'date', 'datetime'等)
+        save_to_csv: 是否保存到CSV文件
+        csv_filename: 自定义CSV文件名，为None时根据查询条件自动生成
+    
+    返回:
+        查询结果的DataFrame
+    """
+    if collection is None:
+        raise ValueError("必须提供MongoDB集合对象")
+    
+    # 自动检测日期字段名称
+    if date_field is None:
+        # 获取集合中的一个文档以检测字段
+        sample_doc = collection.find_one()
+        if sample_doc:
+            # 常见的日期字段名称列表
+            possible_date_fields = ['trade_date', 'date', 'time', 'datetime', 
+                                   'ann_date', 'end_date', 'start_date']
+            # 优先检查这些常见字段
+            for field in possible_date_fields:
+                if field in sample_doc:
+                    date_field = field
+                    break
+            
+            # 如果没找到，尝试查找名称中包含'date'或'time'的字段
+            if date_field is None:
+                for field in sample_doc.keys():
+                    if 'date' in field.lower() or 'time' in field.lower():
+                        date_field = field
+                        break
+        
+        # 如果仍然没有找到日期字段，使用默认值
+        if date_field is None:
+            date_field = 'trade_date'  # 默认日期字段
+            logging.warning(f"未能自动检测到日期字段，使用默认值: {date_field}")
+    
+    # 构建查询条件
+    query = {}
+    
+    # 添加股票代码条件
+    if code_list:
+        # 尝试检测代码字段
+        code_field = None
+        sample_doc = collection.find_one()
+        if sample_doc:
+            for field in ['ts_code', 'code', 'symbol']:
+                if field in sample_doc:
+                    code_field = field
+                    break
+        
+        if not code_field:
+            # 如果无法检测到代码字段，尝试通过集合名称推断
+            col_name = collection.name.lower()
+            if 'stock' in col_name or '股票' in col_name or 'a股' in col_name:
+                code_field = 'ts_code'
+            else:
+                code_field = 'code'
+        
+        # 添加查询条件
+        if isinstance(code_list, list):
+            query[code_field] = {"$in": code_list}
+        else:
+            query[code_field] = code_list
+    
+    # 检查日期字段的类型并将日期字符串转换为适当的格式
+    if start_date or end_date:
+        # 确定日期字段的类型
+        date_field_type = None
+        sample_doc = collection.find_one({date_field: {"$exists": True}})
+        if sample_doc and date_field in sample_doc:
+            date_field_type = type(sample_doc[date_field])
+        
+        date_condition = {}
+        
+        # 如果日期字段是datetime类型
+        if date_field_type == datetime:
+            # 转换start_date为datetime
+            if start_date:
+                try:
+                    # 尝试从不同格式转换
+                    if '-' in start_date:  # YYYY-MM-DD
+                        start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                    else:  # YYYYMMDD
+                        start_datetime = datetime.strptime(start_date, '%Y%m%d')
+                    date_condition["$gte"] = start_datetime
+                except ValueError as e:
+                    logging.warning(f"无法转换开始日期: {e}")
+            
+            # 转换end_date为datetime
+            if end_date:
+                try:
+                    # 尝试从不同格式转换
+                    if '-' in end_date:  # YYYY-MM-DD
+                        end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                    else:  # YYYYMMDD
+                        end_datetime = datetime.strptime(end_date, '%Y%m%d')
+                    
+                    # 设置为当天结束时间
+                    end_datetime = datetime.combine(end_datetime.date(), datetime.max.time())
+                    date_condition["$lte"] = end_datetime
+                except ValueError as e:
+                    logging.warning(f"无法转换结束日期: {e}")
+        
+        # 如果日期字段是字符串类型
+        else:
+            if start_date:
+                # 保证格式一致
+                if '-' not in start_date and len(start_date) == 8:  # YYYYMMDD
+                    start_date = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+                date_condition["$gte"] = start_date
+            
+            if end_date:
+                # 保证格式一致
+                if '-' not in end_date and len(end_date) == 8:  # YYYYMMDD
+                    end_date = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
+                date_condition["$lte"] = end_date
+        
+        # 添加日期条件到查询
+        if date_condition:
+            query[date_field] = date_condition
+    
+    # 构建列选择条件
+    projection = None
+    if columns:
+        projection = {col: 1 for col in columns}
+        # 确保_id被排除，除非明确请求
+        if '_id' not in columns:
+            projection['_id'] = 0
+    
+    # 执行查询
+    cursor = collection.find(query, projection)
+    
+    # 转换为DataFrame
+    df = pd.DataFrame(list(cursor))
+    
+    # 如果没有指定列但结果中有_id，移除它
+    if not columns and '_id' in df.columns:
+        df = df.drop('_id', axis=1)
+    
+    # 处理日期字段，转换为datetime类型
+    if not df.empty and date_field in df.columns:
+        try:
+            # 如果日期已经是datetime类型，这一步不会有变化
+            df[date_field] = pd.to_datetime(df[date_field], errors='coerce')
+        except Exception as e:
+            logging.warning(f"转换日期字段{date_field}失败: {e}")
+    
+    # 保存到CSV文件
+    if save_to_csv and not df.empty:
+        if not csv_filename:
+            # 自动生成文件名
+            parts = []
+            if code_list:
+                if isinstance(code_list, list) and len(code_list) <= 3:
+                    codes_str = '_'.join(code_list)
+                elif isinstance(code_list, str):
+                    codes_str = code_list
+                else:
+                    codes_str = f"{len(code_list)}只股票"
+                parts.append(codes_str)
+            
+            if start_date and end_date:
+                parts.append(f"{start_date}至{end_date}")
+            elif start_date:
+                parts.append(f"自{start_date}起")
+            elif end_date:
+                parts.append(f"截至{end_date}")
+            
+            if not parts:
+                csv_filename = "stock_data.csv"
+            else:
+                csv_filename = f"{'_'.join(parts)}.csv"
+        
+        df.to_csv(csv_filename, index=False)
+        print(f"数据已保存到 {csv_filename}")
+    
+    print(f"共提取了 {len(df)} 条记录")
+    return df
+
 
 def main():
     """示例:使用TushareMongoManager"""
@@ -1881,3 +2075,11 @@ def main():
 
 if __name__ == "__main__":
     main() 
+
+# 导出模块级函数，使其可以被导入
+__all__ = [
+    'TushareMongoManager',
+    'SyncStrategy',
+    'RateLimiter',
+    'extract_data_simple'
+] 
