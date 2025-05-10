@@ -2075,11 +2075,3 @@ def main():
 
 if __name__ == "__main__":
     main() 
-
-# 导出模块级函数，使其可以被导入
-__all__ = [
-    'TushareMongoManager',
-    'SyncStrategy',
-    'RateLimiter',
-    'extract_data_simple'
-] 

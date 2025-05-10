@@ -156,6 +156,62 @@ extract_data_simple(
 )
 ```
 
+### 提取数据库数据的完整示例
+
+```python
+from tusharemongo import extract_data_simple
+import pandas as pd
+
+# 示例1：基本提取并打印数据
+df = extract_data_simple(
+    collection='stock_daily',  # MongoDB集合名称
+    code_list=['000001.SZ', '000002.SZ'],  # 股票代码列表
+    start_date='20230101',  # 开始日期
+    end_date='20230131',  # 结束日期
+)
+print(f"获取到 {len(df)} 条记录")
+print(df.head())
+
+# 示例2：指定字段并保存到CSV
+df = extract_data_simple(
+    collection='stock_daily',
+    code_list=['000001.SZ', '000002.SZ', '000063.SZ'],
+    start_date='20230101',
+    end_date='20230131',
+    columns=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'vol', 'amount'],
+    save_to_csv=True,  # 保存到CSV
+    csv_filename='stock_data_202301.csv'  # 文件名
+)
+print(f"数据已保存到 stock_data_202301.csv，共 {len(df)} 条记录")
+
+# 示例3：使用date_field参数处理不同日期字段名
+df = extract_data_simple(
+    collection='stock_min',  # 分钟级数据集合
+    code_list='000001.SZ',  # 可以是单个股票代码
+    start_date='20230101 09:30:00',  # 带时间的日期
+    end_date='20230101 15:00:00',
+    date_field='trade_time',  # 指定日期字段名称
+    columns=['ts_code', 'trade_time', 'open', 'close', 'vol']
+)
+
+# 示例4：结合pandas进行进一步数据分析
+if not df.empty:
+    # 按股票代码分组计算平均值
+    avg_prices = df.groupby('ts_code')[['open', 'close', 'high', 'low']].mean()
+    print("各股票平均价格:")
+    print(avg_prices)
+    
+    # 计算日收益率
+    df['daily_return'] = df.groupby('ts_code')['close'].pct_change()
+    
+    # 绘制收盘价走势图
+    import matplotlib.pyplot as plt
+    pivot_df = df.pivot(index='trade_date', columns='ts_code', values='close')
+    pivot_df.plot(figsize=(12, 6), title='股票收盘价走势')
+    plt.savefig('stock_prices.png')
+    print("走势图已保存到 stock_prices.png")
+```
+
 ### 其他实用功能
 
 ```python
