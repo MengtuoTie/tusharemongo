@@ -6,12 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="tusharemongo",
     version="0.1.0",
-    author="Author",
+    author="MengtuoTie",
     author_email="your.email@example.com",
     description="将Tushare数据同步到MongoDB的工具包",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/tusharemongo",
+    url="https://github.com/MengtuoTie/tusharemongo",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
