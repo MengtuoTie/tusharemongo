@@ -15,13 +15,13 @@
 ### 直接从GitHub安装
 
 ```bash
-pip install git+https://github.com/yourusername/tusharemongo.git
+pip install git+https://github.com/MengtuoTie/tusharemongo.git
 ```
 
 ### 或克隆后安装
 
 ```bash
-git clone https://github.com/yourusername/tusharemongo.git
+git clone https://github.com/MengtuoTie/tusharemongo.git
 cd tusharemongo
 pip install .
 ```
