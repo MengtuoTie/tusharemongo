@@ -10,12 +10,12 @@
 - 日期标准化和数据预处理
 - 支持分钟级和日级数据同步
 
-## 安装方法
+## 安装
 
-### 直接从GitHub安装
+### 使用pip从GitHub安装
 
 ```bash
-pip install git+https://github.com/MengtuoTie/tusharemongo.git
+pip install git+https://github.com/MengtuoTie/tusharemongo.git --no-deps
 ```
 
 ### 或克隆后安装
@@ -23,7 +23,7 @@ pip install git+https://github.com/MengtuoTie/tusharemongo.git
 ```bash
 git clone https://github.com/MengtuoTie/tusharemongo.git
 cd tusharemongo
-pip install .
+pip install . --no-deps
 ```
 
 ## 使用示例
