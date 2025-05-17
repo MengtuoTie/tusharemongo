@@ -64,7 +64,7 @@ if last_date:
 # 按天提取历史日线数据
 daily_manager.fetch_data(
     start_date='20230101',  # 开始日期，格式为YYYYMMDD
-    end_date='20230131',    # 结束日期，格式为YYYYMMDD
+    end_date='20250131',    # 结束日期，格式为YYYYMMDD,可以注释掉更新到最近日期
     day_step=1,  # 每次API调用获取的天数，设为1表示按单日提取，适合日线数据
                  # 值越大，单次获取的数据时间跨度越长，但可能导致数据量过大
                  # 设置为10：每次获取10天数据; 设置为30：每次获取一个月
@@ -92,7 +92,7 @@ adj_factor_manager = TushareMongoManager(
 # 按天提取复权因子数据
 adj_factor_manager.fetch_data(
     start_date='20230101',  # 开始日期
-    end_date='20230131',    # 结束日期
+    end_date='20250131',    # 结束日期，可以注释掉跟新到最近日期
     day_step=1,  # 按单日提取全市场数据，减少单次API调用的数据量
                  # 复权因子数据建议使用较小的day_step值，因为数据更新频率较高
     sync_strategy=SyncStrategy.SKIP_EXISTING  # 采用跳过已存在的同步策略，适合增量更新
@@ -115,7 +115,7 @@ daily_basic_manager = TushareMongoManager(
 # 按天提取每日指标数据
 daily_basic_manager.fetch_data(
     start_date='20230101',  # 开始日期
-    end_date='20230131',    # 结束日期
+    end_date='20250131',    # 结束日期，可以注释掉跟新到最近日期
     day_step=1,  # 按天提取数据
     fields='ts_code,trade_date,turnover_rate,volume_ratio,pe,pb',  # 指定需要的字段，减少数据传输量
     # fields参数是可选的，不指定则获取全部字段，多个字段用逗号分隔
@@ -165,7 +165,7 @@ pro_bar_manager = TushareMongoManager(
 pro_bar_manager.fetch_data(
     ts_codes=ts_codes[:10],  # 只使用前10个股票代码进行测试，实际使用时可以使用全部ts_codes
     start_date='20230101',  # 开始日期
-    end_date='20230131',    # 结束日期
+    end_date='20250131',    # 结束日期，可以注释掉跟新到最近日期
     day_step=10000,  # 设置较大值，每只股票一次性提取整个日期范围的数据
                      # 对于单个股票的时间序列数据，可以设置较大的day_step
     adj='hfq',  # 复权方式选项:
